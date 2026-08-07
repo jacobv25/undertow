@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Undertow</string>
+    <string name="service_label">Undertow scroll watcher</string>
+    <string name="service_description">Undertow watches for continuous scrolling in feed apps you choose (Instagram, Facebook, TikTok, YouTube Shorts) and shows a pause screen when a session runs long. Nothing you scroll past is read, stored, or sent anywhere — Undertow only counts scroll events and which app they happened in, entirely on this device.</string>
+</resources>
