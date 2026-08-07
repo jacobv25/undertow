@@ -20,8 +20,20 @@ class Prefs(context: Context) {
     fun setEnabled(app: TargetApp, enabled: Boolean) =
         sp.edit().putBoolean("enabled_${app.key}", enabled).apply()
 
+    /** Only count scrolling inside the app's short-video surface (e.g. Instagram Reels). */
+    fun surfaceOnly(app: TargetApp): Boolean = sp.getBoolean("surface_only_${app.key}", false)
+
+    fun setSurfaceOnly(app: TargetApp, value: Boolean) =
+        sp.edit().putBoolean("surface_only_${app.key}", value).apply()
+
+    /** Strict mode: the snooze button requires a 3-second hold. */
+    var strictMode: Boolean
+        get() = sp.getBoolean(KEY_STRICT, false)
+        set(value) = sp.edit().putBoolean(KEY_STRICT, value).apply()
+
     companion object {
         private const val KEY_THRESHOLD_MIN = "threshold_min"
+        private const val KEY_STRICT = "strict_mode"
         const val DEFAULT_THRESHOLD_MIN = 5
     }
 }

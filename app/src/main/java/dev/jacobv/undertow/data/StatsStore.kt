@@ -29,6 +29,20 @@ class StatsStore(context: Context) {
         it.copy(walkedAway = it.walkedAway + 1)
     }
 
+    /**
+     * Total doomscrolling ms per day for the last [days] days, oldest first
+     * (last element is today). Days with no data are 0.
+     */
+    fun history(days: Int): List<Long> {
+        val today = LocalDate.now()
+        return (days - 1 downTo 0).map { offset ->
+            val raw = sp.getString(DAY_PREFIX + today.minusDays(offset.toLong()), null)
+                ?: return@map 0L
+            val day = JSONObject(raw)
+            TargetApp.entries.sumOf { day.optJSONObject(it.key)?.optLong("doomMs") ?: 0L }
+        }
+    }
+
     fun today(): Map<TargetApp, AppDay> {
         val day = JSONObject(sp.getString(todayKey(), null) ?: return emptyMap())
         return TargetApp.entries.mapNotNull { app ->

@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,6 +34,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
@@ -175,6 +179,54 @@ private fun HomeScreen(
                     }
                 )
             }
+            // Optional surface-only mode (e.g. Instagram: count Reels but not the feed).
+            if (enabled && !app.shortsOnly && app.surfaceNeedle != null) {
+                var surfaceOnly by remember { mutableStateOf(prefs.surfaceOnly(app)) }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(start = 20.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Reels only",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Switch(
+                        checked = surfaceOnly,
+                        onCheckedChange = {
+                            surfaceOnly = it
+                            prefs.setSurfaceOnly(app, it)
+                        }
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+        var strict by remember { mutableStateOf(prefs.strictMode) }
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Strict mode", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Snoozing requires holding the button for 3 seconds",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = strict,
+                onCheckedChange = {
+                    strict = it
+                    prefs.strictMode = it
+                }
+            )
         }
 
         Spacer(Modifier.height(24.dp))
@@ -202,6 +254,59 @@ private fun HomeScreen(
                 }
             }
         }
+        Spacer(Modifier.height(24.dp))
+        val history = remember(refresh) { stats.history(14) }
+        val peakMin = (history.max() / 60_000L)
+        Text("Last 14 days", style = MaterialTheme.typography.titleMedium)
+        Text(
+            if (peakMin > 0) "minutes doomscrolled per day · peak $peakMin min"
+            else "nothing recorded yet",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(12.dp))
+        TrendChart(history)
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                "2 weeks ago",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                "today",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
         Spacer(Modifier.height(32.dp))
+    }
+}
+
+@Composable
+private fun TrendChart(dayTotalsMs: List<Long>) {
+    val dim = Accent.copy(alpha = 0.35f)
+    // Floor of 1 min keeps an all-zero chart from dividing by zero and makes
+    // tiny first-day bars visibly tiny rather than full-height.
+    val maxMs = dayTotalsMs.max().coerceAtLeast(60_000L).toFloat()
+    Canvas(
+        Modifier
+            .fillMaxWidth()
+            .height(96.dp)
+    ) {
+        val n = dayTotalsMs.size
+        val slot = size.width / n
+        val barWidth = slot * 0.6f
+        dayTotalsMs.forEachIndexed { i, ms ->
+            val h = (ms / maxMs) * size.height
+            drawRoundRect(
+                color = if (i == n - 1) Accent else dim,
+                topLeft = Offset(i * slot + (slot - barWidth) / 2f, size.height - h.coerceAtLeast(3f)),
+                size = Size(barWidth, h.coerceAtLeast(3f)),
+                cornerRadius = CornerRadius(barWidth / 3f)
+            )
+        }
     }
 }

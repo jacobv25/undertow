@@ -52,7 +52,10 @@ class ScrollWatcherService : AccessibilityService() {
         val pkg = event.packageName?.toString() ?: return
         val app = TargetApp.forPackage(pkg) ?: return
         if (!prefs.isEnabled(app)) return
-        if (app.shortsOnly && !inShortsSurface(event)) return
+        val needle = app.surfaceNeedle
+        if (needle != null && (app.shortsOnly || prefs.surfaceOnly(app)) &&
+            !inSurface(event, needle)
+        ) return
         if (overlay.isShowing) return
 
         val now = System.currentTimeMillis()
@@ -65,6 +68,7 @@ class ScrollWatcherService : AccessibilityService() {
             overlay.show(
                 appLabel = app.label,
                 sessionMinutes = minutes,
+                strict = prefs.strictMode,
                 onDone = {
                     overlay.hide()
                     stats.recordWalkedAway(app)
@@ -80,22 +84,23 @@ class ScrollWatcherService : AccessibilityService() {
     }
 
     /**
-     * True if the scroll happened inside a short-video surface (YouTube Shorts).
-     * YouTube's Shorts player lives in views whose resource ids contain "reel"
-     * (e.g. reel_recycler, reel_player_page_container); regular feed/player ids don't.
+     * True if the scroll happened inside the app's short-video surface, identified
+     * by view resource ids containing [needle] — YouTube Shorts lives in reel_*
+     * views (reel_recycler, reel_player_page_container), Instagram Reels in clips_*
+     * (clips_viewer_view_pager); regular feed/player ids don't match.
      */
-    private fun inShortsSurface(event: AccessibilityEvent): Boolean {
+    private fun inSurface(event: AccessibilityEvent, needle: String): Boolean {
         event.source?.let { src ->
             var node: AccessibilityNodeInfo? = src
             var hops = 0
             while (node != null && hops < 6) {
-                if (node.viewIdResourceName?.contains("reel", ignoreCase = true) == true) return true
+                if (node.viewIdResourceName?.contains(needle, ignoreCase = true) == true) return true
                 node = node.parent
                 hops++
             }
         }
         val root = rootInActiveWindow ?: return false
-        return findIdContains(root, "reel", depth = 0)
+        return findIdContains(root, needle, depth = 0)
     }
 
     private fun findIdContains(node: AccessibilityNodeInfo, needle: String, depth: Int): Boolean {

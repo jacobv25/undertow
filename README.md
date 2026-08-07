@@ -23,7 +23,17 @@ can dismiss get kept, hard blocks get uninstalled.
 - **`StatsStore`** — per-day per-app counters (minutes scrolled, interrupts,
   times you walked away) in SharedPreferences, 30-day retention, local only.
 - **`MainActivity`** — Compose UI: permission onboarding, threshold slider,
-  per-app toggles, today's stats.
+  per-app toggles, today's stats, and a 14-day trend chart.
+
+### v0.2.0
+
+- **14-day trend chart** on the home screen (bars = minutes doomscrolled per
+  day, today highlighted).
+- **"Reels only" toggle for Instagram** — count only the Reels surface
+  (`clips_*` view ids), leaving the regular feed free, same mechanism as
+  YouTube Shorts detection.
+- **Strict mode** — the snooze button requires a deliberate 3-second hold
+  (with countdown) instead of a reflex tap.
 
 Nothing scrolled past is read or stored; only scroll *events* and the app they
 happened in are counted, entirely on-device.
@@ -39,13 +49,12 @@ Then open Undertow → "Open accessibility settings" → enable **Undertow scrol
 watcher**. (Sideloaded apps may need "Allow restricted settings" under
 App info ⋮ menu on Android 13+ before the toggle unlocks.)
 
-## Known limitations / v2 ideas
+## Known limitations / ideas
 
-- Instagram/Facebook count *all* scrolling, not just Reels — per-surface
-  detection like YouTube's is possible with their view ids if wanted.
+- Facebook counts *all* scrolling (its Reels surface ids are less stable /
+  documented than Instagram's `clips_*`).
 - TikTok is registered under both `com.zhiliaoapp.musically` and
   `com.ss.android.ugc.trill` (regional builds).
-- Stats screen only shows today; 30 days of history are already stored, so a
-  trend chart is an easy add.
-- No "strict mode" (making the snooze button harder to hit over time within a
-  session, or requiring a typed sentence).
+- Surface detection depends on the target apps' view resource ids
+  (`reel_*`, `clips_*`) — an app update that renames them would need the
+  needle re-derived (`adb shell uiautomator dump` while on the surface).

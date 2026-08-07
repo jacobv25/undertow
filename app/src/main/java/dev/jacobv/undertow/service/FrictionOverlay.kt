@@ -1,11 +1,14 @@
 package dev.jacobv.undertow.service
 
 import android.animation.ValueAnimator
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
+import android.os.CountDownTimer
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.animation.AccelerateDecelerateInterpolator
@@ -27,10 +30,18 @@ class FrictionOverlay(private val context: Context) {
 
     private var root: View? = null
     private var breather: ValueAnimator? = null
+    private var holdTimer: CountDownTimer? = null
 
     val isShowing: Boolean get() = root != null
 
-    fun show(appLabel: String, sessionMinutes: Long, onDone: () -> Unit, onSnooze: () -> Unit) {
+    @SuppressLint("ClickableViewAccessibility")
+    fun show(
+        appLabel: String,
+        sessionMinutes: Long,
+        strict: Boolean,
+        onDone: () -> Unit,
+        onSnooze: () -> Unit,
+    ) {
         if (isShowing) return
 
         val dp = { v: Float ->
@@ -61,7 +72,7 @@ class FrictionOverlay(private val context: Context) {
             gravity = Gravity.CENTER
         }
 
-        fun pillButton(label: String, bg: Int, fg: Int, onClick: () -> Unit) =
+        fun pillButton(label: String, bg: Int, fg: Int) =
             Button(context).apply {
                 text = label
                 isAllCaps = false
@@ -72,18 +83,43 @@ class FrictionOverlay(private val context: Context) {
                     setColor(bg)
                 }
                 setPadding(dp(32f), dp(14f), dp(32f), dp(14f))
-                setOnClickListener { onClick() }
             }
 
         val doneButton = pillButton(
             "I'm done — take me out",
             Color.parseColor("#4FC3F7"), Color.parseColor("#0B1F2A")
-        ) { onDone() }
+        ).apply { setOnClickListener { onDone() } }
 
-        val snoozeButton = pillButton(
-            "A little longer",
-            Color.parseColor("#22FFFFFF"), Color.WHITE
-        ) { onSnooze() }
+        val snoozeLabel = if (strict) "Hold for a little longer" else "A little longer"
+        val snoozeButton = pillButton(snoozeLabel, Color.parseColor("#22FFFFFF"), Color.WHITE)
+        if (strict) {
+            // Strict mode: snoozing costs a deliberate 3-second hold, not a reflex tap.
+            snoozeButton.setOnTouchListener { _, e ->
+                when (e.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        holdTimer = object : CountDownTimer(HOLD_MS, 1000L) {
+                            override fun onTick(remainingMs: Long) {
+                                snoozeButton.text = "Keep holding… ${remainingMs / 1000 + 1}"
+                            }
+
+                            override fun onFinish() {
+                                if (isShowing) onSnooze()
+                            }
+                        }.start()
+                        true
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        holdTimer?.cancel()
+                        holdTimer = null
+                        snoozeButton.text = snoozeLabel
+                        true
+                    }
+                    else -> false
+                }
+            }
+        } else {
+            snoozeButton.setOnClickListener { onSnooze() }
+        }
 
         val column = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -141,7 +177,13 @@ class FrictionOverlay(private val context: Context) {
     fun hide() {
         breather?.cancel()
         breather = null
+        holdTimer?.cancel()
+        holdTimer = null
         root?.let { windowManager.removeView(it) }
         root = null
+    }
+
+    companion object {
+        private const val HOLD_MS = 3000L
     }
 }
