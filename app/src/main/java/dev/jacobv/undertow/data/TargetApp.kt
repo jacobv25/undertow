@@ -13,11 +13,23 @@ enum class TargetApp(
     val packages: Set<String>,
     val shortsOnly: Boolean,
     val surfaceNeedle: String? = null,
+    /** Fully-qualified view ids of the surface, for the fast native whole-tree lookup. */
+    val surfaceIds: List<String> = emptyList(),
 ) {
-    INSTAGRAM("instagram", "Instagram", setOf("com.instagram.android"), false, "clips"),
+    INSTAGRAM(
+        "instagram", "Instagram", setOf("com.instagram.android"), false, "clips",
+        listOf("com.instagram.android:id/clips_viewer_view_pager"),
+    ),
     FACEBOOK("facebook", "Facebook", setOf("com.facebook.katana"), false),
     TIKTOK("tiktok", "TikTok", setOf("com.zhiliaoapp.musically", "com.ss.android.ugc.trill"), false),
-    YOUTUBE_SHORTS("youtube", "YouTube Shorts", setOf("com.google.android.youtube"), true, "reel");
+    YOUTUBE_SHORTS(
+        "youtube", "YouTube Shorts", setOf("com.google.android.youtube"), true, "reel",
+        listOf(
+            "com.google.android.youtube:id/reel_recycler",
+            "com.google.android.youtube:id/reel_player_page_container",
+            "com.google.android.youtube:id/reel_watch_fragment_root",
+        ),
+    );
 
     companion object {
         fun forPackage(pkg: String?): TargetApp? =
