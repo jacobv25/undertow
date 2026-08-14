@@ -1,11 +1,29 @@
 # Undertow
 
+[![CI](https://github.com/jacobv25/undertow/actions/workflows/ci.yml/badge.svg)](https://github.com/jacobv25/undertow/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/jacobv25/undertow)](https://github.com/jacobv25/undertow/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+<!-- TODO: demo GIF goes here — adb screenrecord of scroll → overlay → walk away -->
+
 An Android anti-doomscrolling app: it watches for continuous scrolling in feed
 apps and throws up a full-screen "take a breath" pause when a session runs long.
 Friction, not a hard block — research on habit interventions says interrupts you
 can dismiss get kept, hard blocks get uninstalled.
 
 ## How it works
+
+```mermaid
+flowchart LR
+    A["Instagram · TikTok<br>YouTube · Facebook"] -- "TYPE_VIEW_SCROLLED" --> B["ScrollWatcherService<br>(AccessibilityService)"]
+    B -- "surface filter<br>(reel_* / clips_*)" --> C["SessionTracker<br>pure-Kotlin state machine"]
+    C -- "threshold hit<br>(default 5 min)" --> D["FrictionOverlay<br>breathing pause"]
+    D -- "“I'm done”" --> H["Home — counted as a win"]
+    D -- "“A little longer”" --> S["Snooze 60s → 30s → 15s"]
+    S --> C
+    C --> E["StatsStore<br>on-device, 30-day"]
+    E --> F["MainActivity<br>today's stats + 14-day trend"]
+```
 
 - **`ScrollWatcherService`** — an `AccessibilityService` receiving
   `TYPE_VIEW_SCROLLED` events system-wide, filtered to the watched apps
@@ -44,6 +62,11 @@ happened in are counted, entirely on-device.
 JAVA_HOME=/opt/homebrew/opt/openjdk@17 ./gradlew assembleDebug testDebugUnitTest
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
+
+Release builds are signed when a `keystore.properties` (gitignored; see
+`app/build.gradle.kts`) points at a local keystore — otherwise
+`assembleRelease` produces an unsigned APK. Signed APKs for each version are
+on the [Releases page](https://github.com/jacobv25/undertow/releases).
 
 Then open Undertow → "Open accessibility settings" → enable **Undertow scroll
 watcher**. (Sideloaded apps may need "Allow restricted settings" under
