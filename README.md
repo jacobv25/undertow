@@ -15,7 +15,7 @@ can dismiss get kept, hard blocks get uninstalled.
 
 ```mermaid
 flowchart LR
-    A["Instagram · TikTok<br>YouTube · Facebook"] -- "TYPE_VIEW_SCROLLED" --> B["ScrollWatcherService<br>(AccessibilityService)"]
+    A["Instagram · Threads · TikTok<br>YouTube · Facebook"] -- "TYPE_VIEW_SCROLLED" --> B["ScrollWatcherService<br>(AccessibilityService)"]
     B -- "surface filter<br>(reel_* / clips_*)" --> C["SessionTracker<br>pure-Kotlin state machine"]
     C -- "threshold hit<br>(default 5 min)" --> D["FrictionOverlay<br>breathing pause"]
     D -- "“I'm done”" --> H["Home — counted as a win"]
@@ -27,7 +27,7 @@ flowchart LR
 
 - **`ScrollWatcherService`** — an `AccessibilityService` receiving
   `TYPE_VIEW_SCROLLED` events system-wide, filtered to the watched apps
-  (Instagram, Facebook, TikTok, YouTube). For YouTube, only scrolling inside the
+  (Instagram, Threads, Facebook, TikTok, YouTube). For YouTube, only scrolling inside the
   Shorts surface counts (detected via `reel*` view resource ids), so normal
   videos and subscriptions are free.
 - **`SessionTracker`** — pure-Kotlin state machine (unit-tested). A "doom

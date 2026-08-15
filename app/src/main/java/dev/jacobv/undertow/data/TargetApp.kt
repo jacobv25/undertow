@@ -20,6 +20,8 @@ enum class TargetApp(
         "instagram", "Instagram", setOf("com.instagram.android"), false, "clips",
         listOf("com.instagram.android:id/clips_viewer_view_pager"),
     ),
+    // Threads is a pure text feed — all scrolling counts, like Facebook.
+    THREADS("threads", "Threads", setOf("com.instagram.barcelona"), false),
     FACEBOOK("facebook", "Facebook", setOf("com.facebook.katana"), false),
     TIKTOK("tiktok", "TikTok", setOf("com.zhiliaoapp.musically", "com.ss.android.ugc.trill"), false),
     YOUTUBE_SHORTS(
