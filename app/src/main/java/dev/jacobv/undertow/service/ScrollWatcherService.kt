@@ -50,10 +50,33 @@ class ScrollWatcherService : AccessibilityService() {
         // Our own overlay appearing also fires this event — never treat it as leaving.
         if (pkg == packageName) return
         if (TargetApp.forPackage(pkg) == null && overlay.isShowing) {
-            // User escaped on their own (home, back, notification) — that's a win, not a snooze.
-            overlay.hide()
-            tracker.endSession()
+            // Transient system surfaces (the launcher preview behind a predictive
+            // back gesture, notification shade peeks) fire this without the user
+            // actually leaving — wait a beat and confirm before hiding.
+            handler.removeCallbacks(confirmEscape)
+            handler.postDelayed(confirmEscape, ESCAPE_CONFIRM_MS)
         }
+    }
+
+    private val confirmEscape = Runnable {
+        if (!overlay.isShowing) return@Runnable
+        // The focused overlay is usually the "active window" itself, so
+        // rootInActiveWindow can't tell us what's underneath — scan all windows
+        // for the target app instead. A PiP remnant doesn't count as still there.
+        val stillThere = windows.any { w ->
+            !w.isInPictureInPictureMode &&
+                TargetApp.forPackage(w.root?.packageName?.toString()) != null
+        }
+        if (stillThere) return@Runnable
+        if (Log.isLoggable(TAG, Log.DEBUG)) {
+            Log.d(TAG, "escape confirmed, hiding overlay; windows=" +
+                windows.joinToString { it.root?.packageName?.toString() ?: "?" })
+        }
+        // User escaped on their own (home, notification) — that's a win, not a snooze.
+        // Keep the session clock, though: if they dive straight back in, the next
+        // scroll re-fires the overlay with the accumulated time instead of giving
+        // them a fresh minute. A real walk-away hits the idle reset anyway.
+        overlay.hide()
     }
 
     private fun onScrolled(event: AccessibilityEvent) {
@@ -199,6 +222,7 @@ class ScrollWatcherService : AccessibilityService() {
 
     companion object {
         private const val TAG = "Undertow"
+        private const val ESCAPE_CONFIRM_MS = 600L
 
         /** Lets MainActivity show live "service is on" state. */
         @Volatile

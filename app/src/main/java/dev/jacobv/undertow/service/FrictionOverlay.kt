@@ -8,6 +8,7 @@ import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.os.CountDownTimer
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
@@ -139,7 +140,15 @@ class FrictionOverlay(private val context: Context) {
             addView(snoozeButton)
         }
 
-        val container = FrameLayout(context).apply {
+        // The back gesture must not be a free exit — the only ways out are the two
+        // buttons. The window is focusable, so back arrives here as a key event;
+        // swallow it.
+        val container = object : FrameLayout(context) {
+            override fun dispatchKeyEvent(event: KeyEvent): Boolean =
+                if (event.keyCode == KeyEvent.KEYCODE_BACK) true
+                else super.dispatchKeyEvent(event)
+        }.apply {
+            isFocusableInTouchMode = true
             setBackgroundColor(Color.parseColor("#F2081018"))
             addView(column, FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -171,6 +180,7 @@ class FrictionOverlay(private val context: Context) {
         )
 
         windowManager.addView(container, params)
+        container.requestFocus()
         root = container
     }
 
