@@ -31,9 +31,15 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_STRICT, false)
         set(value) = sp.edit().putBoolean(KEY_STRICT, value).apply()
 
+    /** Voice call-outs: speak the overlay's line aloud via TTS. */
+    var ttsEnabled: Boolean
+        get() = sp.getBoolean(KEY_TTS, false)
+        set(value) = sp.edit().putBoolean(KEY_TTS, value).apply()
+
     companion object {
         private const val KEY_THRESHOLD_MIN = "threshold_min"
         private const val KEY_STRICT = "strict_mode"
+        private const val KEY_TTS = "tts_enabled"
         const val DEFAULT_THRESHOLD_MIN = 5
     }
 }

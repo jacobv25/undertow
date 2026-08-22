@@ -22,6 +22,11 @@ class SessionTracker(
 
     var currentPkg: String? = null
         private set
+
+    /** How many times this session has already been interrupted — drives escalation. */
+    var interruptCount = 0
+        private set
+
     private var sessionStartMs = 0L
     private var lastScrollMs = 0L
     private var snoozeUntilMs = 0L
@@ -34,12 +39,14 @@ class SessionTracker(
             sessionStartMs = now
             snoozeUntilMs = 0L
             snoozeCount = 0
+            interruptCount = 0
         }
         val countedMs = if (continuing) now - lastScrollMs else 0L
         lastScrollMs = now
 
         val sessionMs = now - sessionStartMs
         val interrupt = sessionMs >= thresholdMsFor(pkg) && now >= snoozeUntilMs
+        if (interrupt) interruptCount++
         return ScrollResult(interrupt, countedMs, sessionMs)
     }
 
@@ -57,6 +64,7 @@ class SessionTracker(
         lastScrollMs = 0L
         snoozeUntilMs = 0L
         snoozeCount = 0
+        interruptCount = 0
     }
 
     companion object {

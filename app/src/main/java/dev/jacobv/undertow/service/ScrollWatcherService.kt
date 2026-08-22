@@ -6,6 +6,7 @@ import android.graphics.Path
 import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
+import android.speech.tts.TextToSpeech
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -20,6 +21,8 @@ class ScrollWatcherService : AccessibilityService() {
     private lateinit var tracker: SessionTracker
     private lateinit var overlay: FrictionOverlay
     private val handler = Handler(Looper.getMainLooper())
+    private var tts: TextToSpeech? = null
+    private var ttsReady = false
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -27,6 +30,7 @@ class ScrollWatcherService : AccessibilityService() {
         stats = StatsStore(this)
         tracker = SessionTracker(thresholdMsFor = { prefs.thresholdMs })
         overlay = FrictionOverlay(this)
+        tts = TextToSpeech(this) { status -> ttsReady = status == TextToSpeech.SUCCESS }
         running = true
     }
 
@@ -34,6 +38,8 @@ class ScrollWatcherService : AccessibilityService() {
         running = false
         handler.removeCallbacksAndMessages(null)
         if (::overlay.isInitialized && overlay.isShowing) overlay.hide()
+        tts?.shutdown()
+        tts = null
         super.onDestroy()
     }
 
@@ -98,10 +104,18 @@ class ScrollWatcherService : AccessibilityService() {
         if (result.interrupt) {
             stats.recordInterrupt(app)
             val minutes = (result.sessionMs / 60_000L).coerceAtLeast(1)
+            // First interrupt of a session is calm; every repeat escalates.
+            val level = tracker.interruptCount - 1
+            val line = Persona.line(level)
+            if (prefs.ttsEnabled && ttsReady) {
+                tts?.speak(line, TextToSpeech.QUEUE_FLUSH, null, "undertow_interrupt")
+            }
             overlay.show(
                 appLabel = app.label,
                 sessionMinutes = minutes,
                 strict = prefs.strictMode,
+                level = level,
+                line = line,
                 onDone = {
                     overlay.hide()
                     stats.recordWalkedAway(app)

@@ -229,6 +229,30 @@ private fun HomeScreen(
             )
         }
 
+        Spacer(Modifier.height(16.dp))
+        var tts by remember { mutableStateOf(prefs.ttsEnabled) }
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Voice call-outs", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Says the interruption out loud — and it gets meaner every time you come back",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = tts,
+                onCheckedChange = {
+                    tts = it
+                    prefs.ttsEnabled = it
+                }
+            )
+        }
+
         Spacer(Modifier.height(24.dp))
         Text("Today", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))

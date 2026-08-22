@@ -79,6 +79,28 @@ class SessionTrackerTest {
     }
 
     @Test
+    fun `interrupt count escalates within a session and resets with it`() {
+        val t = tracker()
+        var now = 0L
+        while (!t.onScroll("app", now).interrupt) now += 10_000L
+        assertEquals(1, t.interruptCount)
+
+        t.snooze(now) // 60s grace
+        now += 30_000L
+        assertFalse(t.onScroll("app", now).interrupt) // within grace
+        assertEquals(1, t.interruptCount)
+        now += 40_000L // grace expired
+        assertTrue(t.onScroll("app", now).interrupt)
+        assertEquals(2, t.interruptCount)
+
+        t.endSession()
+        assertEquals(0, t.interruptCount)
+        now += 10_000L
+        t.onScroll("app", now) // fresh session
+        assertEquals(0, t.interruptCount)
+    }
+
+    @Test
     fun `counted time only accumulates within a continuous session`() {
         val t = tracker()
         assertEquals(0L, t.onScroll("app", 0L).countedMs)

@@ -7,6 +7,8 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.os.CountDownTimer
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -31,19 +33,28 @@ class FrictionOverlay(private val context: Context) {
 
     private var root: View? = null
     private var breather: ValueAnimator? = null
+    private var shaker: ValueAnimator? = null
     private var holdTimer: CountDownTimer? = null
 
     val isShowing: Boolean get() = root != null
 
+    /**
+     * [level] 0 is the calm first interrupt of a session; anything higher gets
+     * the drill-sergeant treatment — red palette, agitated pulse, shake, buzz.
+     * [line] is the subtitle (chosen by the caller so TTS can speak the same one).
+     */
     @SuppressLint("ClickableViewAccessibility")
     fun show(
         appLabel: String,
         sessionMinutes: Long,
         strict: Boolean,
+        level: Int,
+        line: String,
         onDone: () -> Unit,
         onSnooze: () -> Unit,
     ) {
         if (isShowing) return
+        val drill = level > 0
 
         val dp = { v: Float ->
             TypedValue.applyDimension(
@@ -51,25 +62,28 @@ class FrictionOverlay(private val context: Context) {
             ).toInt()
         }
 
+        val accent = Color.parseColor(if (drill) "#FF5252" else "#4FC3F7")
+        val accentFill = Color.parseColor(if (drill) "#33FF5252" else "#334FC3F7")
+
         val circle = View(context).apply {
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#334FC3F7"))
-                setStroke(dp(2f), Color.parseColor("#4FC3F7"))
+                setColor(accentFill)
+                setStroke(dp(2f), accent)
             }
         }
 
         val title = TextView(context).apply {
-            text = "You've been scrolling $appLabel for $sessionMinutes minutes"
+            text = Persona.title(level, appLabel, sessionMinutes)
             setTextColor(Color.WHITE)
             textSize = 22f
             gravity = Gravity.CENTER
         }
 
         val subtitle = TextView(context).apply {
-            text = "Take a breath. Is this still what you want to be doing?"
-            setTextColor(Color.parseColor("#B0BEC5"))
-            textSize = 15f
+            text = line
+            setTextColor(Color.parseColor(if (drill) "#FFCDD2" else "#B0BEC5"))
+            textSize = if (drill) 17f else 15f
             gravity = Gravity.CENTER
         }
 
@@ -87,11 +101,16 @@ class FrictionOverlay(private val context: Context) {
             }
 
         val doneButton = pillButton(
-            "I'm done — take me out",
-            Color.parseColor("#4FC3F7"), Color.parseColor("#0B1F2A")
+            if (drill) "Fine. Get me out." else "I'm done — take me out",
+            accent, Color.parseColor(if (drill) "#2A0808" else "#0B1F2A")
         ).apply { setOnClickListener { onDone() } }
 
-        val snoozeLabel = if (strict) "Hold for a little longer" else "A little longer"
+        val snoozeLabel = when {
+            strict && drill -> "Hold to keep wasting time"
+            strict -> "Hold for a little longer"
+            drill -> "Keep wasting time"
+            else -> "A little longer"
+        }
         val snoozeButton = pillButton(snoozeLabel, Color.parseColor("#22FFFFFF"), Color.WHITE)
         if (strict) {
             // Strict mode: snoozing costs a deliberate 3-second hold, not a reflex tap.
@@ -149,7 +168,7 @@ class FrictionOverlay(private val context: Context) {
                 else super.dispatchKeyEvent(event)
         }.apply {
             isFocusableInTouchMode = true
-            setBackgroundColor(Color.parseColor("#F2081018"))
+            setBackgroundColor(Color.parseColor(if (drill) "#F2200606" else "#F2081018"))
             addView(column, FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.CENTER
@@ -158,8 +177,9 @@ class FrictionOverlay(private val context: Context) {
             })
         }
 
+        // Calm: a slow 4s breath. Drill: an agitated 1s pulse.
         breather = ValueAnimator.ofFloat(1f, 1.25f).apply {
-            duration = 4000L
+            duration = if (drill) 1000L else 4000L
             repeatCount = ValueAnimator.INFINITE
             repeatMode = ValueAnimator.REVERSE
             interpolator = AccelerateDecelerateInterpolator()
@@ -182,11 +202,32 @@ class FrictionOverlay(private val context: Context) {
         windowManager.addView(container, params)
         container.requestFocus()
         root = container
+
+        if (drill) {
+            // A decaying side-to-side shake plus a harsh buzz — the screen is
+            // annoyed with you now.
+            shaker = ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = 700L
+                addUpdateListener {
+                    val t = it.animatedFraction
+                    column.translationX =
+                        (Math.sin(t * Math.PI * 6) * dp(10f) * (1 - t)).toFloat()
+                }
+                start()
+            }
+            @Suppress("DEPRECATION")
+            val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            vibrator.vibrate(
+                VibrationEffect.createWaveform(longArrayOf(0, 90, 60, 90, 60, 240), -1)
+            )
+        }
     }
 
     fun hide() {
         breather?.cancel()
         breather = null
+        shaker?.cancel()
+        shaker = null
         holdTimer?.cancel()
         holdTimer = null
         root?.let { windowManager.removeView(it) }
