@@ -110,12 +110,16 @@ class ScrollWatcherService : AccessibilityService() {
             if (prefs.ttsEnabled && ttsReady) {
                 tts?.speak(line, TextToSpeech.QUEUE_FLUSH, null, "undertow_interrupt")
             }
+            val media = prefs.nextInterruptMedia()?.let {
+                FrictionOverlay.Media(it, if (Prefs.isVideo(it)) "video/mp4" else "image/*")
+            }
             overlay.show(
                 appLabel = app.label,
                 sessionMinutes = minutes,
                 strict = prefs.strictMode,
                 level = level,
                 line = line,
+                media = media,
                 onDone = {
                     overlay.hide()
                     stats.recordWalkedAway(app)

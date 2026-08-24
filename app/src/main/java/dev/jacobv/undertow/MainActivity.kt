@@ -4,7 +4,10 @@ import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -37,9 +40,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.material3.TextButton
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
+import kotlin.concurrent.thread
 import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -250,6 +256,64 @@ private fun HomeScreen(
                     tts = it
                     prefs.ttsEnabled = it
                 }
+            )
+        }
+
+        Spacer(Modifier.height(16.dp))
+        // User-supplied interrupt clips. Picked files are copied into
+        // app-private storage; nothing ships with the app and nothing leaves
+        // the device.
+        val context = LocalContext.current
+        var clipCount by remember { mutableIntStateOf(prefs.interruptMediaClips().size) }
+        val mediaPicker = rememberLauncherForActivityResult(
+            ActivityResultContracts.PickMultipleVisualMedia()
+        ) { uris ->
+            if (uris.isNotEmpty()) {
+                thread {
+                    prefs.interruptMediaDir.mkdirs()
+                    uris.forEachIndexed { i, uri ->
+                        val mime = context.contentResolver.getType(uri) ?: "image/*"
+                        val dest = java.io.File(
+                            prefs.interruptMediaDir,
+                            "clip_${System.currentTimeMillis()}_$i.${Prefs.extFor(mime)}"
+                        )
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            dest.outputStream().use { input.copyTo(it) }
+                        }
+                    }
+                    clipCount = prefs.interruptMediaClips().size
+                }
+            }
+        }
+        Text("Interrupt clips", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Replace the breathing circle with your own videos, GIFs, or photos — " +
+                "pick whoever you want yelling at you. Interrupts cycle through " +
+                "them in turn. Stays on this device.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Button(onClick = {
+                mediaPicker.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
+                )
+            }) { Text("Add clips") }
+            if (clipCount > 0) {
+                Spacer(Modifier.width(12.dp))
+                TextButton(onClick = {
+                    prefs.clearInterruptMedia()
+                    clipCount = 0
+                }) { Text("Clear all") }
+            }
+        }
+        if (clipCount > 0) {
+            Text(
+                if (clipCount == 1) "1 clip set (videos loop with sound)"
+                else "$clipCount clips in rotation (videos loop with sound)",
+                style = MaterialTheme.typography.bodySmall,
+                color = Accent
             )
         }
 

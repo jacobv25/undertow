@@ -3,9 +3,13 @@ package dev.jacobv.undertow.service
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.os.Build
+import android.graphics.drawable.AnimatedImageDrawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.ImageDecoder
 import android.os.CountDownTimer
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -17,9 +21,12 @@ import android.view.WindowManager
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.VideoView
 import android.util.TypedValue
+import java.io.File
 
 /**
  * Full-screen pause drawn from the accessibility service (TYPE_ACCESSIBILITY_OVERLAY,
@@ -31,10 +38,14 @@ class FrictionOverlay(private val context: Context) {
     private val windowManager =
         context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
+    /** User-supplied interrupt media, already copied into app-private storage. */
+    data class Media(val file: File, val mime: String)
+
     private var root: View? = null
     private var breather: ValueAnimator? = null
     private var shaker: ValueAnimator? = null
     private var holdTimer: CountDownTimer? = null
+    private var video: VideoView? = null
 
     val isShowing: Boolean get() = root != null
 
@@ -42,6 +53,8 @@ class FrictionOverlay(private val context: Context) {
      * [level] 0 is the calm first interrupt of a session; anything higher gets
      * the drill-sergeant treatment — red palette, agitated pulse, shake, buzz.
      * [line] is the subtitle (chosen by the caller so TTS can speak the same one).
+     * [media], when set, replaces the breathing circle: videos loop with sound,
+     * GIFs animate, stills just glare at you.
      */
     @SuppressLint("ClickableViewAccessibility")
     fun show(
@@ -50,6 +63,7 @@ class FrictionOverlay(private val context: Context) {
         strict: Boolean,
         level: Int,
         line: String,
+        media: Media? = null,
         onDone: () -> Unit,
         onSnooze: () -> Unit,
     ) {
@@ -65,7 +79,10 @@ class FrictionOverlay(private val context: Context) {
         val accent = Color.parseColor(if (drill) "#FF5252" else "#4FC3F7")
         val accentFill = Color.parseColor(if (drill) "#33FF5252" else "#334FC3F7")
 
-        val circle = View(context).apply {
+        // The user's media replaces the breathing circle; a broken file falls
+        // back to the circle rather than a blank hole.
+        val mediaVisual = media?.let { m -> runCatching { mediaView(m) }.getOrNull() }
+        val visual = mediaVisual ?: View(context).apply {
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(accentFill)
@@ -144,9 +161,10 @@ class FrictionOverlay(private val context: Context) {
         val column = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            addView(circle, LinearLayout.LayoutParams(dp(120f), dp(120f)).apply {
-                bottomMargin = dp(40f)
-            })
+            val visualParams =
+                if (mediaVisual != null) LinearLayout.LayoutParams(dp(300f), dp(260f))
+                else LinearLayout.LayoutParams(dp(120f), dp(120f))
+            addView(visual, visualParams.apply { bottomMargin = dp(40f) })
             addView(title, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = dp(12f) })
@@ -177,18 +195,21 @@ class FrictionOverlay(private val context: Context) {
             })
         }
 
-        // Calm: a slow 4s breath. Drill: an agitated 1s pulse.
-        breather = ValueAnimator.ofFloat(1f, 1.25f).apply {
-            duration = if (drill) 1000L else 4000L
-            repeatCount = ValueAnimator.INFINITE
-            repeatMode = ValueAnimator.REVERSE
-            interpolator = AccelerateDecelerateInterpolator()
-            addUpdateListener {
-                val s = it.animatedValue as Float
-                circle.scaleX = s
-                circle.scaleY = s
+        // Calm: a slow 4s breath. Drill: an agitated 1s pulse. User media
+        // animates itself, so it doesn't get scaled.
+        if (mediaVisual == null) {
+            breather = ValueAnimator.ofFloat(1f, 1.25f).apply {
+                duration = if (drill) 1000L else 4000L
+                repeatCount = ValueAnimator.INFINITE
+                repeatMode = ValueAnimator.REVERSE
+                interpolator = AccelerateDecelerateInterpolator()
+                addUpdateListener {
+                    val s = it.animatedValue as Float
+                    visual.scaleX = s
+                    visual.scaleY = s
+                }
+                start()
             }
-            start()
         }
 
         val params = WindowManager.LayoutParams(
@@ -223,6 +244,30 @@ class FrictionOverlay(private val context: Context) {
         }
     }
 
+    /** Videos loop with sound; GIFs animate (API 28+); anything else is a still. */
+    private fun mediaView(media: Media): View =
+        if (media.mime.startsWith("video")) {
+            VideoView(context).apply {
+                setVideoPath(media.file.absolutePath)
+                setOnPreparedListener { it.isLooping = true; start() }
+                // A broken file must never pop a system error dialog over the overlay.
+                setOnErrorListener { _, _, _ -> true }
+                video = this
+            }
+        } else {
+            ImageView(context).apply {
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                if (Build.VERSION.SDK_INT >= 28) {
+                    val drawable =
+                        ImageDecoder.decodeDrawable(ImageDecoder.createSource(media.file))
+                    setImageDrawable(drawable)
+                    (drawable as? AnimatedImageDrawable)?.start()
+                } else {
+                    setImageBitmap(BitmapFactory.decodeFile(media.file.absolutePath))
+                }
+            }
+        }
+
     fun hide() {
         breather?.cancel()
         breather = null
@@ -230,6 +275,8 @@ class FrictionOverlay(private val context: Context) {
         shaker = null
         holdTimer?.cancel()
         holdTimer = null
+        video?.stopPlayback()
+        video = null
         root?.let { windowManager.removeView(it) }
         root = null
     }
