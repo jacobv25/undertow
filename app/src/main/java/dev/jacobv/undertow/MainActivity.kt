@@ -24,6 +24,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -49,6 +52,7 @@ import kotlin.concurrent.thread
 import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import dev.jacobv.undertow.data.Intensity
 import dev.jacobv.undertow.data.Prefs
 import dev.jacobv.undertow.data.StatsStore
 import dev.jacobv.undertow.data.TargetApp
@@ -212,27 +216,91 @@ private fun HomeScreen(
         }
 
         Spacer(Modifier.height(24.dp))
-        var strict by remember { mutableStateOf(prefs.strictMode) }
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text("Strict mode", style = MaterialTheme.typography.titleMedium)
+        var intensity by remember { mutableStateOf(prefs.intensity) }
+        Text("Intensity", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(8.dp))
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            Intensity.entries.forEachIndexed { i, option ->
+                SegmentedButton(
+                    selected = intensity == option,
+                    onClick = {
+                        intensity = option
+                        prefs.intensity = option
+                    },
+                    shape = SegmentedButtonDefaults.itemShape(i, Intensity.entries.size)
+                ) {
+                    Text(option.name.lowercase().replaceFirstChar { it.uppercase() })
+                }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            when (intensity) {
+                Intensity.GENTLE -> "Tap to snooze."
+                Intensity.STRICT -> "Snoozing requires holding the button for 3 seconds."
+                Intensity.EXTREME ->
+                    "The hold gets longer every time you come back (3 → 5 → 8 s), and the " +
+                        "phone yells at you the whole time your finger is down. Plays out " +
+                        "loud, even on silent. Headphones don't save you. You've been warned."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = if (intensity == Intensity.EXTREME) Accent
+            else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        if (intensity == Intensity.EXTREME) {
+            // Optional hold audio: the user's own yelling, used from the second
+            // offense on. Copied into app-private storage like the video clips.
+            val ctx = LocalContext.current
+            var holdClipCount by remember { mutableIntStateOf(prefs.holdClips().size) }
+            val audioPicker = rememberLauncherForActivityResult(
+                ActivityResultContracts.OpenMultipleDocuments()
+            ) { uris ->
+                if (uris.isNotEmpty()) {
+                    thread {
+                        prefs.holdClipDir.mkdirs()
+                        uris.forEachIndexed { i, uri ->
+                            val dest = java.io.File(
+                                prefs.holdClipDir, "hold_${System.currentTimeMillis()}_$i.audio"
+                            )
+                            ctx.contentResolver.openInputStream(uri)?.use { input ->
+                                dest.outputStream().use { input.copyTo(it) }
+                            }
+                        }
+                        holdClipCount = prefs.holdClips().size
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            Text("Hold audio", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "By default the drill sergeant does the yelling. Add your own audio " +
+                    "and it takes over from the second offense on, louder each time. " +
+                    "Stays on this device.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Button(onClick = { audioPicker.launch(arrayOf("audio/*")) }) {
+                    Text("Add audio")
+                }
+                if (holdClipCount > 0) {
+                    Spacer(Modifier.width(12.dp))
+                    TextButton(onClick = {
+                        prefs.clearHoldClips()
+                        holdClipCount = 0
+                    }) { Text("Clear all") }
+                }
+            }
+            if (holdClipCount > 0) {
                 Text(
-                    "Snoozing requires holding the button for 3 seconds",
+                    if (holdClipCount == 1) "1 hold clip set"
+                    else "$holdClipCount hold clips in rotation",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = Accent
                 )
             }
-            Switch(
-                checked = strict,
-                onCheckedChange = {
-                    strict = it
-                    prefs.strictMode = it
-                }
-            )
         }
 
         Spacer(Modifier.height(16.dp))

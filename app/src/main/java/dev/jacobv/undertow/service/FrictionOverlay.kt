@@ -46,6 +46,9 @@ class FrictionOverlay(private val context: Context) {
     private var shaker: ValueAnimator? = null
     private var holdTimer: CountDownTimer? = null
     private var video: VideoView? = null
+    /** The looping clip's player, so the hold can silence it while it yells. */
+    private var videoPlayer: android.media.MediaPlayer? = null
+    private var activeHoldAudio: HoldAudio? = null
 
     val isShowing: Boolean get() = root != null
 
@@ -55,6 +58,9 @@ class FrictionOverlay(private val context: Context) {
      * [line] is the subtitle (chosen by the caller so TTS can speak the same one).
      * [media], when set, replaces the breathing circle: videos loop with sound,
      * GIFs animate, stills just glare at you.
+     * [holdMs] is how long the strict-mode snooze hold takes; [holdAudio] (Extreme
+     * mode) makes noise for as long as the finger is down, playing [holdClip]
+     * when there is one.
      */
     @SuppressLint("ClickableViewAccessibility")
     fun show(
@@ -64,11 +70,15 @@ class FrictionOverlay(private val context: Context) {
         level: Int,
         line: String,
         media: Media? = null,
+        holdMs: Long = HOLD_MS,
+        holdAudio: HoldAudio? = null,
+        holdClip: File? = null,
         onDone: () -> Unit,
         onSnooze: () -> Unit,
     ) {
         if (isShowing) return
         val drill = level > 0
+        activeHoldAudio = holdAudio
 
         val dp = { v: Float ->
             TypedValue.applyDimension(
@@ -123,6 +133,7 @@ class FrictionOverlay(private val context: Context) {
         ).apply { setOnClickListener { onDone() } }
 
         val snoozeLabel = when {
+            holdAudio != null -> "Hold to keep wasting time (it will yell)"
             strict && drill -> "Hold to keep wasting time"
             strict -> "Hold for a little longer"
             drill -> "Keep wasting time"
@@ -130,22 +141,30 @@ class FrictionOverlay(private val context: Context) {
         }
         val snoozeButton = pillButton(snoozeLabel, Color.parseColor("#22FFFFFF"), Color.WHITE)
         if (strict) {
-            // Strict mode: snoozing costs a deliberate 3-second hold, not a reflex tap.
+            // Strict mode: snoozing costs a deliberate hold, not a reflex tap.
+            // Extreme: the hold is also loud, and only while the finger is down.
             snoozeButton.setOnTouchListener { _, e ->
                 when (e.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
-                        holdTimer = object : CountDownTimer(HOLD_MS, 1000L) {
+                        // The user's video keeps looping, but the yelling gets the
+                        // floor: mute the clip for as long as the finger is down.
+                        if (holdAudio != null) runCatching { videoPlayer?.setVolume(0f, 0f) }
+                        holdAudio?.start(level, holdClip)
+                        holdTimer = object : CountDownTimer(holdMs, 1000L) {
                             override fun onTick(remainingMs: Long) {
                                 snoozeButton.text = "Keep holding… ${remainingMs / 1000 + 1}"
                             }
 
                             override fun onFinish() {
+                                holdAudio?.stop()
                                 if (isShowing) onSnooze()
                             }
                         }.start()
                         true
                     }
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        holdAudio?.stop()
+                        runCatching { videoPlayer?.setVolume(1f, 1f) }
                         holdTimer?.cancel()
                         holdTimer = null
                         snoozeButton.text = snoozeLabel
@@ -249,7 +268,7 @@ class FrictionOverlay(private val context: Context) {
         if (media.mime.startsWith("video")) {
             VideoView(context).apply {
                 setVideoPath(media.file.absolutePath)
-                setOnPreparedListener { it.isLooping = true; start() }
+                setOnPreparedListener { it.isLooping = true; videoPlayer = it; start() }
                 // A broken file must never pop a system error dialog over the overlay.
                 setOnErrorListener { _, _, _ -> true }
                 video = this
@@ -269,6 +288,8 @@ class FrictionOverlay(private val context: Context) {
         }
 
     fun hide() {
+        activeHoldAudio?.stop()
+        activeHoldAudio = null
         breather?.cancel()
         breather = null
         shaker?.cancel()
@@ -277,6 +298,7 @@ class FrictionOverlay(private val context: Context) {
         holdTimer = null
         video?.stopPlayback()
         video = null
+        videoPlayer = null
         root?.let { windowManager.removeView(it) }
         root = null
     }

@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.SharedPreferences
 import java.io.File
 
+enum class Intensity { GENTLE, STRICT, EXTREME }
+
 /** Thin wrapper over SharedPreferences; safe to read synchronously from the service. */
 class Prefs(context: Context) {
 
@@ -28,10 +30,45 @@ class Prefs(context: Context) {
     fun setSurfaceOnly(app: TargetApp, value: Boolean) =
         sp.edit().putBoolean("surface_only_${app.key}", value).apply()
 
-    /** Strict mode: the snooze button requires a 3-second hold. */
-    var strictMode: Boolean
-        get() = sp.getBoolean(KEY_STRICT, false)
-        set(value) = sp.edit().putBoolean(KEY_STRICT, value).apply()
+    /**
+     * How hard the overlay pushes back. GENTLE: tap to snooze. STRICT: snoozing
+     * takes a deliberate hold. EXTREME: the hold gets longer each repeat and the
+     * phone yells at you the whole time your finger is down.
+     */
+    var intensity: Intensity
+        get() {
+            sp.getString(KEY_INTENSITY, null)?.let { return Intensity.valueOf(it) }
+            // Pre-intensity installs had a bare strict-mode switch.
+            return if (sp.getBoolean(KEY_STRICT, false)) Intensity.STRICT else Intensity.GENTLE
+        }
+        set(value) = sp.edit().putString(KEY_INTENSITY, value.name).apply()
+
+    /** Strict or harsher: the snooze button requires a hold, not a tap. */
+    val strictMode: Boolean get() = intensity >= Intensity.STRICT
+
+    val extremeMode: Boolean get() = intensity == Intensity.EXTREME
+
+    /**
+     * User-chosen audio for Extreme mode's hold — plays (looping, out loud) for
+     * as long as the snooze button is held, from the second offense on. Same
+     * posture as the video clips: nothing ships with the app.
+     */
+    val holdClipDir: File get() = File(appContext.filesDir, "hold_clips")
+
+    fun holdClips(): List<File> = holdClipDir.listFiles()?.sortedBy { it.name } ?: emptyList()
+
+    fun nextHoldClip(): File? {
+        val clips = holdClips()
+        if (clips.isEmpty()) return null
+        val i = sp.getInt(KEY_HOLD_CLIP_INDEX, 0) % clips.size
+        sp.edit().putInt(KEY_HOLD_CLIP_INDEX, i + 1).apply()
+        return clips[i]
+    }
+
+    fun clearHoldClips() {
+        holdClipDir.deleteRecursively()
+        sp.edit().remove(KEY_HOLD_CLIP_INDEX).apply()
+    }
 
     /** Voice call-outs: speak the overlay's line aloud via TTS. */
     var ttsEnabled: Boolean
@@ -79,6 +116,8 @@ class Prefs(context: Context) {
     companion object {
         private const val KEY_THRESHOLD_MIN = "threshold_min"
         private const val KEY_STRICT = "strict_mode"
+        private const val KEY_INTENSITY = "intensity"
+        private const val KEY_HOLD_CLIP_INDEX = "hold_clip_index"
         private const val KEY_TTS = "tts_enabled"
         private const val KEY_MEDIA_MIME = "interrupt_media_mime"
         private const val KEY_MEDIA_INDEX = "interrupt_media_index"

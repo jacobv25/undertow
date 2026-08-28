@@ -23,6 +23,7 @@ class ScrollWatcherService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private var tts: TextToSpeech? = null
     private var ttsReady = false
+    private lateinit var holdAudio: HoldAudio
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -31,6 +32,7 @@ class ScrollWatcherService : AccessibilityService() {
         tracker = SessionTracker(thresholdMsFor = { prefs.thresholdMs })
         overlay = FrictionOverlay(this)
         tts = TextToSpeech(this) { status -> ttsReady = status == TextToSpeech.SUCCESS }
+        holdAudio = HoldAudio(this) { if (ttsReady) tts else null }
         running = true
     }
 
@@ -120,6 +122,9 @@ class ScrollWatcherService : AccessibilityService() {
                 level = level,
                 line = line,
                 media = media,
+                holdMs = Persona.holdMs(level, prefs.extremeMode),
+                holdAudio = if (prefs.extremeMode) holdAudio else null,
+                holdClip = if (prefs.extremeMode) prefs.nextHoldClip() else null,
                 onDone = {
                     overlay.hide()
                     stats.recordWalkedAway(app)
